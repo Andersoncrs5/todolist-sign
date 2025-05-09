@@ -4,7 +4,10 @@ import br.com.todolist.api.Models.UserModel;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
-public interface UserResponsitory extends CrudRepository<UserModel, Long> {
-    UserModel findByEmail(String email);
+public interface UserRepository extends CrudRepository<UserModel, Long> {
+    Optional<UserModel> findByEmail(String email);
+    boolean existsByEmail(String email);
 }

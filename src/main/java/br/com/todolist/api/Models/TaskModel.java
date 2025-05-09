@@ -1,11 +1,8 @@
 package br.com.todolist.api.Models;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import lombok.Data;
 
 @Entity
-@Data
 @Table(name = "task_model")
 public class TaskModel {
 
@@ -22,7 +19,11 @@ public class TaskModel {
 
     private boolean done = false;
 
-    private Long fk_task_id;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    @Version
+    private Long version;
 
     public String getDescription() {
         return description;
@@ -40,12 +41,12 @@ public class TaskModel {
         this.done = done;
     }
 
-    public Long getFk_task_id() {
-        return fk_task_id;
+    public Long getUserId() {
+        return userId;
     }
 
-    public void setFk_task_id(Long fk_task_id) {
-        this.fk_task_id = fk_task_id;
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public Long getId() {
@@ -62,5 +63,13 @@ public class TaskModel {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

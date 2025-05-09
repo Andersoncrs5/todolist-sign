@@ -8,7 +8,6 @@ import lombok.Data;
 import java.util.List;
 
 @Entity
-@Data
 @Table(name = "user_model")
 public class UserModel {
 
@@ -16,19 +15,55 @@ public class UserModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(length = 150)
-    @NotNull
+    @Column(length = 150, nullable = false)
     private String name;
 
-    @Column(length = 150, unique = true)
-    @NotNull
+    @Column(length = 150, unique = true, nullable = false)
     private String email;
 
-    @NotNull
-    @Column(length = 100)
+    @Column(length = 500, nullable = false)
     private String password;
 
     @Version
     private Long version;
 
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }

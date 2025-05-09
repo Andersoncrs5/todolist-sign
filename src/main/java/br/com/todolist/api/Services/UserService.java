@@ -3,84 +3,88 @@ package br.com.todolist.api.Services;
 import br.com.todolist.api.DTO.LoginDTO;
 import br.com.todolist.api.Models.TaskModel;
 import br.com.todolist.api.Models.UserModel;
-import br.com.todolist.api.Repositories.UserResponsitory;
+import br.com.todolist.api.Repositories.UserRepository;
 import br.com.todolist.api.Repositories.TaskRepository;
+import br.com.todolist.api.config.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class UserService {
 
     @Autowired
-    private UserResponsitory responsitory;
+    private UserRepository responsitory;
 
     @Autowired
     private TaskRepository taskResponsitory;
+
+    @Autowired
+    private AuthenticationManager authManager;
+
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Async
     @Transactional
     public ResponseEntity<?> createUser(UserModel user){
         try {
-            boolean check = this.validationUser(user);
-
-            if (!check) {
-                return new ResponseEntity<>("Datas are required", HttpStatus.BAD_REQUEST);
-            }
-
-            if (user.getId() != null) {
-                return new ResponseEntity<>("ID must not be provided for creation", HttpStatus.BAD_REQUEST);
-            }
+            boolean check = this.responsitory.existsByEmail(user.getEmail());
+            if (check)
+                return new ResponseEntity<>("Email is used", HttpStatus.CONFLICT);
 
             user.setEmail(user.getEmail().toLowerCase());
-            System.out.println(user.toString());
+
+            BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+            user.setPassword(encoder.encode(user.getPassword()));
 
             this.responsitory.save(user);
-            return new ResponseEntity<>(user,HttpStatus.CREATED);
+            return new ResponseEntity<>("User created with success!!!",HttpStatus.CREATED);
         } catch (Exception e) {
             return new ResponseEntity<>("Error:\n" + e, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    public ResponseEntity<?> getUser(Long id){
+    @Async
+    public UserModel getUser(Long id){
         try {
-            if (id == 0) {
-                return new ResponseEntity<>("Id is required",HttpStatus.BAD_REQUEST);
-            }
-
             UserModel user = this.responsitory.findById(id).orElse(null);
 
             if (user == null ) {
-                return new ResponseEntity<>("User not found", HttpStatus.NOT_FOUND);
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
             }
 
-            return new ResponseEntity<>(user, HttpStatus.FOUND);
+            return user;
         } catch (Exception e) {
-            return new ResponseEntity<>("Error:\n" + e, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error:\n" + e);
         }
     }
 
+    @Async
     @Transactional
     public ResponseEntity<?> deleteUser(Long id){
         try {
-            if (id == 0) {
-                return new ResponseEntity<>("Id is required",HttpStatus.BAD_REQUEST);
-            }
+            UserModel user = this.getUser(id);
 
-            UserModel user = this.responsitory.findById(id).orElse(null);
-
-            if (user == null) {
-                return new ResponseEntity<>("User not found", HttpStatus.NOT_FOUND);
-            }
-
-            List<TaskModel> list = this.taskResponsitory.findByFkTaskId(user.getId());
+            List<TaskModel> list = this.taskResponsitory.findAllByUserId(user.getId());
 
             for(TaskModel t : list){
                 this.taskResponsitory.deleteById(t.getId());
@@ -88,7 +92,7 @@ public class UserService {
 
             this.responsitory.deleteById(user.getId());
 
-            return new ResponseEntity<>(user, HttpStatus.FOUND);
+            return new ResponseEntity<>("User deleted", HttpStatus.OK);
         } catch (Exception e) {
             return new ResponseEntity<>("Error:\n" + e, HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -96,25 +100,12 @@ public class UserService {
 
     @Async
     @Transactional
-    public ResponseEntity<?> updateUser(UserModel user){
+    public ResponseEntity<?> updateUser(UserModel user, Long id){
         try {
-            boolean check = this.validationUser(user);
-            if (user.getId() == 0) {
-                return new ResponseEntity<>("Id is required",HttpStatus.BAD_REQUEST);
-            }
-
-            if (!check) {
-                return new ResponseEntity<>("Datas are required", HttpStatus.BAD_REQUEST);
-            }
-
-            UserModel userFound = this.responsitory.findById(user.getId()).orElse(null);
-
-            if (userFound == null) {
-                return new ResponseEntity<>("User not found", HttpStatus.NOT_FOUND);
-            }
+            UserModel userFound = this.getUser(id);
 
             userFound.setName(user.getName());
-            userFound.setPassword(user.getPassword());
+            userFound.setPassword(passwordEncoder.encode(user.getPassword()));
 
             this.responsitory.save(userFound);
 
@@ -125,45 +116,29 @@ public class UserService {
     }
 
     @Async
-    public ResponseEntity<?> login(LoginDTO dto){
+    public ResponseEntity<?> login(LoginDTO dto) {
         try {
-            UserModel user = this.responsitory.findByEmail(dto.email());
+            Optional<UserModel> userOp = this.responsitory.findByEmail(dto.getEmail());
 
-            if (user == null){
-                return new ResponseEntity<>(false, HttpStatus.NOT_FOUND);
+            if (userOp.isEmpty()) {
+                return new ResponseEntity<>("", HttpStatus.UNAUTHORIZED);
             }
 
-            if (!Objects.equals(user.getPassword(), dto.password())){
-                return new ResponseEntity<>(false, HttpStatus.BAD_REQUEST);
-            }
+            UserModel user = userOp.get();
 
-            return new ResponseEntity<>(true, HttpStatus.OK);
+            Authentication authentication = authManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(dto.getEmail(), dto.getPassword())
+            );
+
+            String token = jwtService.generateToken((UserDetails) authentication.getPrincipal(), user.getId());
+
+            return new ResponseEntity<>(Map.of("token", token), HttpStatus.OK);
+
+        } catch (AuthenticationException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials.");
         } catch (Exception e) {
             return new ResponseEntity<>("Error:\n" + e, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-    private boolean validationUser(UserModel user){
-        try {
-
-            if (user.getEmail().isEmpty()) {
-                return false;
-            }
-
-            if (user.getName().isEmpty()) {
-                return false;
-            }
-
-            if (user.getPassword().isEmpty()) {
-                return false;
-            }
-
-            return true;
-        } catch (Exception e) {
-            System.err.println(e);
-            return false;
-        }
-    }
-
 
 }
